@@ -302,25 +302,66 @@ class ParentHandler:
                 # Показываем настройки для выбранного ученика
                 await self.show_student_settings(update, context, student_id, student_name, query=query)
 
+
             elif query.data.startswith("parent_toggle_"):
+
                 # Переключение настроек уведомлений
+
                 parts = query.data.split("_")
-                setting_type = parts[2]
-                # Для поддержки monthly_reports
-                if len(parts) > 3:
-                    setting_type = f"{parts[2]}_{parts[3]}"
+
+                # Определяем тип настройки
+
+                if len(parts) >= 4 and parts[2] == "low" and parts[3] == "score" and parts[4] == "notifications":
+
+                    setting_type = "low_score_notifications"
+
+                    student_id = int(parts[5])
+
+                elif len(parts) >= 4 and parts[2] == "high" and parts[3] == "score" and parts[4] == "notifications":
+
+                    setting_type = "high_score_notifications"
+
+                    student_id = int(parts[5])
+
+                elif len(parts) >= 4 and parts[2] == "monthly" and parts[3] == "reports":
+
+                    setting_type = "monthly_reports"
+
                     student_id = int(parts[4])
+
+                elif len(parts) >= 4 and parts[2] == "weekly" and parts[3] == "reports":
+
+                    setting_type = "weekly_reports"
+
+                    student_id = int(parts[4])
+
+                elif len(parts) >= 4 and parts[2] == "test" and parts[3] == "completion":
+
+                    setting_type = "test_completion"
+
+                    student_id = int(parts[4])
+
                 else:
+
+                    # Fallback для других случаев
+
+                    setting_type = parts[2]
+
                     student_id = int(parts[3])
 
-
                 # Получаем текущие настройки
+
                 settings_result = self.parent_service.get_parent_settings(user_id)
+
                 if not settings_result["success"]:
                     await query.edit_message_text(f"Ошибка получения настроек: {settings_result['message']}")
+
                     return
+
                 settings = settings_result["settings"]
+
                 # Убеждаемся, что структура настроек существует
+
                 if "student_notifications" not in settings:
                     settings["student_notifications"] = {}
 
@@ -330,22 +371,37 @@ class ParentHandler:
                 student_settings = settings["student_notifications"][str(student_id)]
 
                 # Переключаем настройку
+
                 current_value = student_settings.get(setting_type, False)
+
                 student_settings[setting_type] = not current_value
+
                 # Сохраняем настройки
+
                 result = self.parent_service.setup_notifications(user_id, student_id, student_settings)
+
                 if not result["success"]:
                     await query.edit_message_text(f"Ошибка сохранения настроек: {result['message']}")
+
                     return
+
                 # Получаем имя ученика
+
                 students_result = self.parent_service.get_linked_students(user_id)
+
                 student_name = ""
+
                 if students_result["success"]:
+
                     for student in students_result["students"]:
+
                         if student["id"] == student_id:
                             student_name = student["full_name"] or student["username"] or f"Ученик {student['id']}"
+
                             break
+
                 # Показываем обновленные настройки
+
                 await self.show_student_settings(update, context, student_id, student_name, query=query)
 
 
@@ -591,11 +647,14 @@ class ParentHandler:
         test_completion = student_settings.get("test_completion", False)
         weekly_reports = student_settings.get("weekly_reports", False)
         monthly_reports = student_settings.get("monthly_reports", False)
+        low_score_notifications = student_settings.get("low_score_notifications", True)  # НОВОЕ
+        high_score_notifications = student_settings.get("high_score_notifications", True)  # НОВОЕ
 
-        # Используем клавиатуру
+        # Используем обновленную клавиатуру
         reply_markup = parent_settings_keyboard(
             student_id, weekly_reports, test_completion,
-            low_score_threshold, high_score_threshold
+            low_score_threshold, high_score_threshold,
+            low_score_notifications, high_score_notifications  # НОВЫЕ ПАРАМЕТРЫ
         )
 
         # Форматируем сообщение с настройками
@@ -603,7 +662,9 @@ class ParentHandler:
         settings_text += f"Вы можете настроить, когда получать уведомления об успеваемости ученика:\n\n"
         settings_text += f"• Еженедельные отчеты: {'✅ Включено' if weekly_reports else '❌ Отключено'}\n"
         settings_text += f"• Уведомления о тестах: {'✅ Включено' if test_completion else '❌ Отключено'}\n"
+        settings_text += f"• Уведомления при низких результатах: {'✅ Включено' if low_score_notifications else '❌ Отключено'}\n"
         settings_text += f"• Порог низкого результата: {low_score_threshold}%\n"
+        settings_text += f"• Уведомления при высоких результатах: {'✅ Включено' if high_score_notifications else '❌ Отключено'}\n"
         settings_text += f"• Порог высокого результата: {high_score_threshold}%\n\n"
         settings_text += f"Используйте кнопки ниже для изменения настроек."
 
