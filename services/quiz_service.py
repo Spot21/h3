@@ -415,6 +415,30 @@ class QuizService:
                         is_correct = False
                     is_correct = user_answer == question["correct_answer"][0]
 
+                elif question["question_type"] == "multiple":
+                    # Проверка для множественного выбора
+                    # Преобразуем ответы в множества для игнорирования порядка
+                    try:
+                        # Убеждаемся, что user_answer является списком
+                        if not isinstance(user_answer, list):
+                            user_answer = [user_answer] if user_answer is not None else []
+
+                        # Убеждаемся, что correct_answer является списком
+                        correct_answer = question["correct_answer"]
+                        if not isinstance(correct_answer, list):
+                            correct_answer = [correct_answer] if correct_answer is not None else []
+
+                        # Преобразуем в множества для сравнения без учета порядка
+                        user_set = set(user_answer)
+                        correct_set = set(correct_answer)
+
+                        # Ответ правильный, если множества совпадают
+                        is_correct = user_set == correct_set
+
+                    except Exception as e:
+                        logger.error(f"Ошибка при проверке множественного выбора: {e}")
+                        is_correct = False
+
 
                 elif question["question_type"] == "sequence":
                     if user_answer is None or question["correct_answer"] is None:
