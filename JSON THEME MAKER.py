@@ -10,6 +10,8 @@ from datetime import datetime
 from PIL import Image, ImageTk
 from pathlib import Path
 import sys
+import platform
+
 
 # Добавляем путь к проекту для импорта модулей
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -66,6 +68,111 @@ class EnhancedQuizEditorApp:
 
         # Привязка событий
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def create_menu(self):
+        """Создание меню с добавлением интеграции БД"""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+
+        # Файл
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Файл", menu=file_menu)
+        file_menu.add_command(label="Новый", command=self.new_file, accelerator="Ctrl+N")
+        file_menu.add_command(label="Открыть", command=self.open_file, accelerator="Ctrl+O")
+        file_menu.add_command(label="Сохранить", command=self.save_file, accelerator="Ctrl+S")
+        file_menu.add_command(label="Сохранить как", command=self.save_file_as, accelerator="Ctrl+Shift+S")
+        file_menu.add_separator()
+        file_menu.add_command(label="Выход", command=self.on_closing)
+
+        # Правка
+        edit_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Правка", menu=edit_menu)
+        edit_menu.add_command(label="Отменить", command=self.undo_action, accelerator="Ctrl+Z")
+        edit_menu.add_command(label="Повторить", command=self.redo_action, accelerator="Ctrl+Y")
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Найти", command=self.show_search, accelerator="Ctrl+F")
+
+        # Вопросы
+        question_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Вопросы", menu=question_menu)
+        question_menu.add_command(label="Добавить", command=self.add_question)
+        question_menu.add_command(label="Дублировать", command=self.duplicate_question)
+        question_menu.add_command(label="Удалить", command=self.delete_question)
+        question_menu.add_separator()
+        question_menu.add_command(label="Проверить все", command=self.validate_all)
+
+        # Инструменты
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Инструменты", menu=tools_menu)
+        tools_menu.add_command(label="Импорт JSON", command=self.import_from_json)
+        tools_menu.add_command(label="Экспорт JSON", command=self.export_to_json)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="Проверка дубликатов", command=self.check_duplicates)
+
+        # База данных (будет добавлено через database_integration)
+        try:
+            from database_integration import add_database_menu_to_editor
+            add_database_menu_to_editor(self)
+        except ImportError:
+            # Добавляем заглушку, если интеграция недоступна
+            db_menu = tk.Menu(menubar, tearoff=0)
+            menubar.add_cascade(label="База данных", menu=db_menu)
+            db_menu.add_command(label="Недоступно", state="disabled")
+
+        # Справка
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Справка", menu=help_menu)
+        help_menu.add_command(label="О программе", command=self.show_about)
+        help_menu.add_command(label="Горячие клавиши", command=self.show_shortcuts)
+
+        # Привязка горячих клавиш
+        self.bind_shortcuts()
+
+    def bind_shortcuts(self):
+        """Привязка горячих клавиш"""
+        self.root.bind('<Control-n>', lambda e: self.new_file())
+        self.root.bind('<Control-o>', lambda e: self.open_file())
+        self.root.bind('<Control-s>', lambda e: self.save_file())
+        self.root.bind('<Control-Shift-S>', lambda e: self.save_file_as())
+        self.root.bind('<Control-f>', lambda e: self.show_search())
+        self.root.bind('<F5>', lambda e: self.validate_all())
+
+    def show_about(self):
+        """Показ информации о программе"""
+        about_text = """
+        JSON Theme Maker v2.0
+
+        Расширенный редактор вопросов для Telegram-бота
+
+        Возможности:
+        • Создание и редактирование вопросов
+        • Интеграция с базой данных
+        • Импорт/экспорт JSON
+        • Валидация данных
+        • Предварительный просмотр
+
+        Совместимость: Windows 11, PyCharm
+        Python 3.8+
+        """
+        messagebox.showinfo("О программе", about_text)
+
+    def show_shortcuts(self):
+        """Показ горячих клавиш"""
+        shortcuts_text = """
+        Горячие клавиши:
+
+        Ctrl+N - Новый файл
+        Ctrl+O - Открыть файл
+        Ctrl+S - Сохранить
+        Ctrl+Shift+S - Сохранить как
+        Ctrl+F - Поиск
+        Ctrl+Z - Отменить
+        Ctrl+Y - Повторить
+        F5 - Проверить все вопросы
+
+        Двойной клик по вопросу - Редактирование
+        """
+        messagebox.showinfo("Горячие клавиши", shortcuts_text)
 
     def setup_styles(self):
         """Настройка стилей интерфейса"""
@@ -903,6 +1010,33 @@ class EnhancedQuizEditorApp:
 
 
 if __name__ == "__main__":
+    # Настройка для Windows
+    if platform.system() == "Windows":
+        try:
+            # Улучшенное отображение на Windows
+            import ctypes
+
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except:
+            pass
+
     root = tk.Tk()
+
+    # Настройка темы для Windows 11
+    try:
+        root.tk.call("source", "azure.tcl")
+        root.tk.call("set_theme", "light")
+    except:
+        pass  # Если тема недоступна, используем стандартную
+
     app = EnhancedQuizEditorApp(root)
+
+    # Добавляем методы, если их нет
+    if not hasattr(app, 'create_menu'):
+        app.create_menu = create_menu.__get__(app, EnhancedQuizEditorApp)
+        app.bind_shortcuts = bind_shortcuts.__get__(app, EnhancedQuizEditorApp)
+        app.show_about = show_about.__get__(app, EnhancedQuizEditorApp)
+        app.show_shortcuts = show_shortcuts.__get__(app, EnhancedQuizEditorApp)
+        app.create_menu()
+
     root.mainloop()
