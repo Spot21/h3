@@ -1,5 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+
 def parent_main_keyboard() -> InlineKeyboardMarkup:
     """Главная клавиатура для родителя"""
     keyboard = [
@@ -88,8 +89,9 @@ def parent_report_period_keyboard(student_id) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 def parent_settings_keyboard(student_id, weekly_reports, test_completion,
-                            low_score_threshold, high_score_threshold) -> InlineKeyboardMarkup:
-    """Клавиатура настроек для ученика"""
+                            low_score_threshold, high_score_threshold,
+                            low_score_notifications=True, high_score_notifications=True) -> InlineKeyboardMarkup:
+    """Клавиатура настроек для ученика с отдельными настройками пороговых уведомлений"""
     keyboard = [
         [
             InlineKeyboardButton(
@@ -101,6 +103,12 @@ def parent_settings_keyboard(student_id, weekly_reports, test_completion,
             InlineKeyboardButton(
                 f"{'✅' if test_completion else '❌'} Уведомления о тестах",
                 callback_data=f"parent_toggle_test_completion_{student_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                f"{'✅' if low_score_notifications else '❌'} Уведомления при низких результатах",
+                callback_data=f"parent_toggle_low_score_notifications_{student_id}"
             )
         ],
         [
@@ -117,6 +125,12 @@ def parent_settings_keyboard(student_id, weekly_reports, test_completion,
             InlineKeyboardButton(
                 "▲",
                 callback_data=f"parent_threshold_low_score_threshold_{student_id}_up"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                f"{'✅' if high_score_notifications else '❌'} Уведомления при высоких результатах",
+                callback_data=f"parent_toggle_high_score_notifications_{student_id}"
             )
         ],
         [
