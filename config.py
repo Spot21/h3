@@ -1,5 +1,24 @@
 import os
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
+
+
+# Определяем корневую директорию проекта
+if getattr(sys, 'frozen', False):
+    # Если запущено как exe файл
+    PROJECT_ROOT = Path(sys.executable).parent
+else:
+    # Если запущено как Python скрипт
+    PROJECT_ROOT = Path(__file__).parent.resolve()
+
+# Загружаем переменные окружения из .env файла
+env_file = PROJECT_ROOT / '.env'
+if env_file.exists():
+    load_dotenv(env_file)
+else:
+    print(f"⚠️ Файл .env не найден по пути: {env_file}")
+    print("Создайте файл .env с необходимыми настройками")
 
 # Загружаем переменные окружения из .env файла
 load_dotenv()
@@ -23,5 +42,14 @@ MEDIA_DIR = os.path.join(DATA_DIR, 'media')
 QUESTIONS_DIR = os.path.join(DATA_DIR, 'questions')
 
 # Убедимся, что все необходимые директории существуют
-for directory in [DATA_DIR, MEDIA_DIR, QUESTIONS_DIR, os.path.dirname(db_path)]:
-    os.makedirs(directory, exist_ok=True)
+for directory in [DATA_DIR, MEDIA_DIR, QUESTIONS_DIR, MEDIA_DIR / 'images']:
+    directory.mkdir(parents=True, exist_ok=True)
+
+# Логирование
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+LOG_FILE = DATA_DIR / 'bot.log'
+
+# Настройки для Windows
+if os.name == 'nt':  # Windows
+    # Настройки кодировки для Windows
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
