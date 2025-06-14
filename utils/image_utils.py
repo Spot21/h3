@@ -1,6 +1,8 @@
 import os
 import logging
+import sys
 import traceback
+from pathlib import Path
 from typing import Optional, Tuple, Union
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
@@ -59,29 +61,41 @@ def ensure_media_directories() -> None:
 
 # В функцию get_image_path добавим создание заглушки
 def get_image_path(file_name: str) -> str:
-    # Удаляем начальный слэш, если есть
-    if file_name.startswith('/') or file_name.startswith('\\'):
-        file_name = file_name[1:]
+    """
+    Получение полного пути к изображению с поддержкой Windows путей
+    """
+    if not file_name:
+        return str(MEDIA_DIR / 'placeholder.png')
 
-    # Используем os.path.join для корректных путей независимо от платформы
-    if os.path.dirname(file_name):
-        full_path = os.path.join(MEDIA_DIR, file_name)
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
-    else:
-        # Если указано только имя файла, ищем в директории images
-        full_path = os.path.join(MEDIA_DIR, 'images', file_name)
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    # Конвертируем в Path объект
+    file_path = Path(file_name)
 
-    # Проверяем существование файла
-    if not os.path.exists(full_path):
-        logger.warning(f"Image file not found: {full_path}")
-        # Возвращаем путь к заглушке
-        placeholder_path = os.path.join(MEDIA_DIR, 'placeholder.png')
-        if not os.path.exists(placeholder_path):
-            ensure_media_directories()  # Создаем директории и заглушку
-        return placeholder_path
+    # Если путь абсолютный и файл существует, возвращаем как есть
+    if file_path.is_absolute() and file_path.exists():
+        return str(file_path)
 
-    return full_path
+    # Убираем начальные слэши/бэкслэши
+    clean_name = str(file_path).lstrip('/\\')
+
+    # Пробуем различные варианты расположения
+    possible_paths = [
+        MEDIA_DIR / clean_name,
+        MEDIA_DIR / 'images' / clean_name,
+        MEDIA_DIR / 'images' / file_path.name,
+        Path.cwd() / clean_name,
+        Path.cwd() / 'data' / 'media' / 'images' / file_path.name
+    ]
+
+    for path in possible_paths:
+        if path.exists():
+            return str(path)
+
+    # Если ничего не найдено, создаем placeholder
+    placeholder_path = MEDIA_DIR / 'placeholder.png'
+    if not placeholder_path.exists():
+        ensure_media_directories()
+
+    return str(placeholder_path)
 
 def resize_image(image_path: str, max_width: int = 800, max_height: int = 600) -> BytesIO:
     """
