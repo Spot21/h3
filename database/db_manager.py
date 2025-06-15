@@ -190,11 +190,11 @@ def add_default_data(session=None):
 def check_connection() -> bool:
     """Проверка соединения с базой данных"""
     try:
+        from sqlalchemy import text  # Добавляем импорт
+
         with engine.connect() as conn:
-            if is_postgres:
-                conn.execute("SELECT 1")
-            else:
-                conn.execute("SELECT 1")
+            # Используем text() для SQL запросов
+            conn.execute(text("SELECT 1"))
         return True
     except Exception as e:
         logger.error(f"Ошибка проверки соединения с БД: {e}")
