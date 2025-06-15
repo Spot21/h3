@@ -590,6 +590,9 @@ class DatabaseDialog:
         dialog.transient(self.parent)
         dialog.grab_set()
 
+        # Сохраняем ссылку на диалог как атрибут экземпляра
+        self.current_dialog = dialog
+
         # Настройка иконки для Windows
         try:
             dialog.iconbitmap(default="")  # Убираем стандартную иконку
@@ -613,7 +616,7 @@ class DatabaseDialog:
         buttons_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
 
         ttk.Button(buttons_frame, text="Закрыть", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
-
+        dialog.wait_window()  # Ждем закрытия диалога
         return self.result
 
     def _create_connection_tab(self, notebook):
@@ -759,7 +762,9 @@ class DatabaseDialog:
             if data:
                 self.result = {"action": "export", "data": data}
                 messagebox.showinfo("Успех", f"Тема '{data['topic']['name']}' готова к импорту в редактор")
-                dialog.destroy()
+                # ПРАВИЛЬНОЕ ИСПРАВЛЕНИЕ: используем сохраненную ссылку
+                if hasattr(self, 'current_dialog'):
+                    self.current_dialog.destroy()
             else:
                 messagebox.showerror("Ошибка", "Не удалось экспортировать тему")
 
@@ -825,6 +830,9 @@ class DatabaseDialog:
         dialog.geometry("700x700")
         dialog.transient(self.parent)
         dialog.grab_set()
+
+        # Сохраняем ссылку на диалог
+        self.current_import_dialog = dialog
 
         notebook = ttk.Notebook(dialog)
         notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -940,7 +948,9 @@ class DatabaseDialog:
                     if success:
                         messagebox.showinfo("Успех", message)
                         self.result = {"action": "import", "success": True}
-                        dialog.destroy()
+                        # ИСПРАВЛЕНИЕ: используем правильную ссылку на диалог
+                        if hasattr(self, 'current_import_dialog'):
+                            self.current_import_dialog.destroy()
                     else:
                         messagebox.showerror("Ошибка", message)
 
