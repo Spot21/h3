@@ -82,7 +82,6 @@ class NotificationService:
             logger.error(traceback.format_exc())
             self._running = False
 
-
     async def send_monthly_reports(self):
         """Отправка ежемесячных отчетов родителям"""
         if not self._running:
@@ -400,150 +399,149 @@ class NotificationService:
             logger.error(f"Error creating notification: {e}")
             return False
 
+    async def notify_test_completion(self, student_id: int, test_result: dict) -> None:
+        """Уведомление родителей о завершении теста учеником"""
+        if self.application is None:
+            logger.error("Cannot notify test completion: application is None")
+            return
 
-async def notify_test_completion(self, student_id: int, test_result: dict) -> None:
-    """Уведомление родителей о завершении теста учеником"""
-    if self.application is None:
-        logger.error("Cannot notify test completion: application is None")
-        return
+        try:
+            # Получаем данные ученика
+            with get_session() as session:
+                student = session.query(User).get(student_id)
+                if not student or student.role != "student":
+                    logger.warning(f"Ученик {student_id} не найден или не является учеником")
+                    return
 
-    try:
-        # Получаем данные ученика
-        with get_session() as session:
-            student = session.query(User).get(student_id)
-            if not student or student.role != "student":
-                logger.warning(f"Ученик {student_id} не найден или не является учеником")
-                return
+                # Находим родителей этого ученика
+                parents_query = (
+                    session.query(User)
+                    .filter(User.role == "parent")
+                    .filter(User.children.any(id=student_id))
+                )
+                parents = parents_query.all()
 
-            # Находим родителей этого ученика
-            parents_query = (
-                session.query(User)
-                .filter(User.role == "parent")
-                .filter(User.children.any(id=student_id))
-            )
-            parents = parents_query.all()
+                if not parents:
+                    logger.info(f"Для ученика {student_id} не найдено родителей")
+                    return
 
-            if not parents:
-                logger.info(f"Для ученика {student_id} не найдено родителей")
-                return
+                # Определяем результат теста для сообщения
+                percentage = test_result.get("percentage", 0)
+                correct_count = test_result.get("correct_count", 0)
+                total_questions = test_result.get("total_questions", 0)
 
-            # Определяем результат теста для сообщения
-            percentage = test_result.get("percentage", 0)
-            correct_count = test_result.get("correct_count", 0)
-            total_questions = test_result.get("total_questions", 0)
+                # Формируем текст уведомления
+                if percentage >= 90:
+                    result_description = "отличный результат"
+                elif percentage >= 70:
+                    result_description = "хороший результат"
+                elif percentage >= 50:
+                    result_description = "удовлетворительный результат"
+                else:
+                    result_description = "требуется дополнительная работа над материалом"
 
-            # Формируем текст уведомления
-            if percentage >= 90:
-                result_description = "отличный результат"
-            elif percentage >= 70:
-                result_description = "хороший результат"
-            elif percentage >= 50:
-                result_description = "удовлетворительный результат"
-            else:
-                result_description = "требуется дополнительная работа над материалом"
+                # Для каждого родителя проверяем настройки уведомлений
+                notifications_created = False
+                for parent in parents:
+                    if not parent.settings:
+                        logger.info(f"У родителя {parent.id} нет настроек уведомлений")
+                        continue
 
-            # Для каждого родителя проверяем настройки уведомлений
-            notifications_created = False
-            for parent in parents:
-                if not parent.settings:
-                    logger.info(f"У родителя {parent.id} нет настроек уведомлений")
-                    continue
+                    try:
+                        settings = json.loads(parent.settings)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Ошибка формата JSON в настройках родителя {parent.id}")
+                        continue
 
-                try:
-                    settings = json.loads(parent.settings)
-                except json.JSONDecodeError:
-                    logger.warning(f"Ошибка формата JSON в настройках родителя {parent.id}")
-                    continue
+                    if "student_notifications" not in settings:
+                        logger.info(f"У родителя {parent.id} нет настроек уведомлений для учеников")
+                        continue
 
-                if "student_notifications" not in settings:
-                    logger.info(f"У родителя {parent.id} нет настроек уведомлений для учеников")
-                    continue
+                    student_settings = settings["student_notifications"].get(str(student_id), {})
 
-                student_settings = settings["student_notifications"].get(str(student_id), {})
+                    # Получаем пороговые значения из настроек
+                    low_threshold = student_settings.get("low_score_threshold", 60)
+                    high_threshold = student_settings.get("high_score_threshold", 90)
 
-                # Получаем пороговые значения из настроек
-                low_threshold = student_settings.get("low_score_threshold", 60)
-                high_threshold = student_settings.get("high_score_threshold", 90)
+                    # Получаем настройки уведомлений (с обратной совместимостью)
+                    test_completion_enabled = student_settings.get("test_completion", False)
+                    low_score_notifications = student_settings.get("low_score_notifications", True)
+                    high_score_notifications = student_settings.get("high_score_notifications", True)
 
-                # Получаем настройки уведомлений (с обратной совместимостью)
-                test_completion_enabled = student_settings.get("test_completion", False)
-                low_score_notifications = student_settings.get("low_score_notifications", True)
-                high_score_notifications = student_settings.get("high_score_notifications", True)
+                    # Определяем, какие уведомления нужно отправить
+                    notifications_to_send = []
 
-                # Определяем, какие уведомления нужно отправить
-                notifications_to_send = []
+                    # 1. Общее уведомление о завершении теста (если включено)
+                    if test_completion_enabled:
+                        message = (
+                            f"Ученик {student.full_name or student.username} завершил тестирование.\n\n"
+                            f"Результат: {correct_count} из {total_questions} правильных ответов ({percentage}%).\n"
+                            f"Оценка: {result_description}.\n\n"
+                            f"Для просмотра подробного отчета используйте команду /report."
+                        )
 
-                # 1. Общее уведомление о завершении теста (если включено)
-                if test_completion_enabled:
-                    message = (
-                        f"Ученик {student.full_name or student.username} завершил тестирование.\n\n"
-                        f"Результат: {correct_count} из {total_questions} правильных ответов ({percentage}%).\n"
-                        f"Оценка: {result_description}.\n\n"
-                        f"Для просмотра подробного отчета используйте команду /report."
-                    )
+                        notifications_to_send.append({
+                            "title": "Результат теста",
+                            "message": message,
+                            "type": "test_result"
+                        })
 
-                    notifications_to_send.append({
-                        "title": "Результат теста",
-                        "message": message,
-                        "type": "test_result"
-                    })
+                    # 2. Уведомление при низком результате (если включено и результат ниже порога)
+                    if low_score_notifications and percentage < low_threshold:
+                        message = (
+                            f"⚠️ Ученик {student.full_name or student.username} получил низкий результат в тесте.\n\n"
+                            f"Результат: {correct_count} из {total_questions} правильных ответов ({percentage}%).\n"
+                            f"Это ниже установленного порога ({low_threshold}%).\n\n"
+                            f"Рекомендуется уделить больше внимания изучению материала."
+                        )
 
-                # 2. Уведомление при низком результате (если включено и результат ниже порога)
-                if low_score_notifications and percentage < low_threshold:
-                    message = (
-                        f"⚠️ Ученик {student.full_name or student.username} получил низкий результат в тесте.\n\n"
-                        f"Результат: {correct_count} из {total_questions} правильных ответов ({percentage}%).\n"
-                        f"Это ниже установленного порога ({low_threshold}%).\n\n"
-                        f"Рекомендуется уделить больше внимания изучению материала."
-                    )
+                        notifications_to_send.append({
+                            "title": "Низкий результат теста",
+                            "message": message,
+                            "type": "low_score_alert"
+                        })
 
-                    notifications_to_send.append({
-                        "title": "Низкий результат теста",
-                        "message": message,
-                        "type": "low_score_alert"
-                    })
+                    # 3. Уведомление при высоком результате (если включено и результат выше порога)
+                    if high_score_notifications and percentage >= high_threshold:
+                        message = (
+                            f"🎉 Поздравляем! Ученик {student.full_name or student.username} получил высокий результат в тесте.\n\n"
+                            f"Результат: {correct_count} из {total_questions} правильных ответов ({percentage}%).\n"
+                            f"Это выше установленного порога ({high_threshold}%).\n\n"
+                            f"Отличная работа! Продолжайте в том же духе."
+                        )
 
-                # 3. Уведомление при высоком результате (если включено и результат выше порога)
-                if high_score_notifications and percentage >= high_threshold:
-                    message = (
-                        f"🎉 Поздравляем! Ученик {student.full_name or student.username} получил высокий результат в тесте.\n\n"
-                        f"Результат: {correct_count} из {total_questions} правильных ответов ({percentage}%).\n"
-                        f"Это выше установленного порога ({high_threshold}%).\n\n"
-                        f"Отличная работа! Продолжайте в том же духе."
-                    )
+                        notifications_to_send.append({
+                            "title": "Высокий результат теста",
+                            "message": message,
+                            "type": "high_score_alert"
+                        })
 
-                    notifications_to_send.append({
-                        "title": "Высокий результат теста",
-                        "message": message,
-                        "type": "high_score_alert"
-                    })
+                    # Создаем уведомления
+                    for notification_data in notifications_to_send:
+                        notification = Notification(
+                            user_id=parent.id,
+                            title=notification_data["title"],
+                            message=notification_data["message"],
+                            notification_type=notification_data["type"],
+                            scheduled_at=datetime.now()
+                        )
+                        session.add(notification)
+                        notifications_created = True
+                        logger.info(
+                            f"Создано уведомление '{notification_data['type']}' для родителя {parent.id}, "
+                            f"ученик {student_id}, результат {percentage}%"
+                        )
 
-                # Создаем уведомления
-                for notification_data in notifications_to_send:
-                    notification = Notification(
-                        user_id=parent.id,
-                        title=notification_data["title"],
-                        message=notification_data["message"],
-                        notification_type=notification_data["type"],
-                        scheduled_at=datetime.now()
-                    )
-                    session.add(notification)
-                    notifications_created = True
-                    logger.info(
-                        f"Создано уведомление '{notification_data['type']}' для родителя {parent.id}, "
-                        f"ученик {student_id}, результат {percentage}%"
-                    )
+                # Сохраняем изменения
+                session.commit()
 
-            # Сохраняем изменения
-            session.commit()
+                # Если были созданы уведомления, сразу запускаем их обработку
+                if notifications_created:
+                    logger.info("Запускаем немедленную обработку созданных уведомлений")
+                    await self.process_notifications()
 
-            # Если были созданы уведомления, сразу запускаем их обработку
-            if notifications_created:
-                logger.info("Запускаем немедленную обработку созданных уведомлений")
-                await self.process_notifications()
+                logger.info(f"Уведомления о результатах теста обработаны для ученика {student_id}")
 
-            logger.info(f"Уведомления о результатах теста обработаны для ученика {student_id}")
-
-    except Exception as e:
-        logger.error(f"Ошибка при отправке уведомления о завершении теста: {e}")
-        logger.error(traceback.format_exc())
+        except Exception as e:
+            logger.error(f"Ошибка при отправке уведомления о завершении теста: {e}")
+            logger.error(traceback.format_exc())
