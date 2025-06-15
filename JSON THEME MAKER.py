@@ -23,8 +23,8 @@ try:
     CONFIG_AVAILABLE = True
 except ImportError:
     # Fallback значения если config недоступен
-    MEDIA_DIR = "data/media"
-    QUESTIONS_DIR = "data/questions"
+    MEDIA_DIR = "/data/media"
+    QUESTIONS_DIR = "/data/questions"
     DB_ENGINE = "sqlite:///data/history_bot.db"
     CONFIG_AVAILABLE = False
     print("⚠️ Конфигурация проекта недоступна, используются значения по умолчанию")
@@ -127,6 +127,380 @@ class EnhancedQuizEditorApp:
 
         # Привязка горячих клавиш
         self.bind_shortcuts()
+
+    def new_file(self):
+        """Создание нового файла"""
+        if self.unsaved_changes:
+            result = messagebox.askyesnocancel(
+                "Несохраненные изменения",
+                "Есть несохраненные изменения. Сохранить перед созданием нового файла?"
+            )
+            if result is True:  # Да
+                self.save_file()
+            elif result is None:  # Отмена
+                return
+
+        # Сброс данных
+        self.data = {"topic": {"id": 1, "name": "", "description": ""}, "questions": []}
+        self.current_file_path = None
+        self.current_question_index = -1
+        self.unsaved_changes = False
+
+        # Обновление интерфейса
+        self.update_topic_info()
+        self.update_questions_list()
+        self.update_stats()
+        self.update_window_title()
+
+    def open_file(self):
+        """Открытие файла"""
+        if self.unsaved_changes:
+            result = messagebox.askyesnocancel(
+                "Несохраненные изменения",
+                "Есть несохраненные изменения. Сохранить перед открытием нового файла?"
+            )
+            if result is True:  # Да
+                self.save_file()
+            elif result is None:  # Отмена
+                return
+
+        file_path = filedialog.askopenfilename(
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    self.data = json.load(f)
+
+                self.current_file_path = file_path
+                self.unsaved_changes = False
+                self.current_question_index = -1
+
+                # Обновление интерфейса
+                self.update_topic_info()
+                self.update_questions_list()
+                self.update_stats()
+                self.update_window_title()
+
+                messagebox.showinfo("Успех", f"Файл '{os.path.basename(file_path)}' успешно открыт.")
+            except Exception as e:
+                messagebox.showerror("Ошибка", f"Ошибка при открытии файла: {str(e)}")
+
+    def save_file_as(self):
+        """Сохранение файла как"""
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+
+        if file_path:
+            self.current_file_path = file_path
+            self.save_to_file(file_path)
+
+    def update_topic_info(self):
+        """Обновление информации о теме"""
+        topic = self.data.get("topic", {})
+        self.topic_name_label.config(text=f"Название: {topic.get('name', 'Не указано')}")
+        self.topic_desc_label.config(text=f"Описание: {topic.get('description', 'Не указано')}")
+
+    def edit_topic(self):
+        """Редактирование темы"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Редактирование темы")
+        dialog.geometry("400x300")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Поля ввода
+        ttk.Label(dialog, text="Название темы:").pack(padx=10, pady=5)
+        name_entry = ttk.Entry(dialog, width=50)
+        name_entry.pack(padx=10, pady=5)
+        name_entry.insert(0, self.data["topic"].get("name", ""))
+
+        ttk.Label(dialog, text="Описание темы:").pack(padx=10, pady=5)
+        desc_text = tk.Text(dialog, height=6, width=50)
+        desc_text.pack(padx=10, pady=5)
+        desc_text.insert(1.0, self.data["topic"].get("description", ""))
+
+        def save_topic():
+            name = name_entry.get().strip()
+            description = desc_text.get(1.0, tk.END).strip()
+
+            if not name:
+                messagebox.showerror("Ошибка", "Название темы не может быть пустым")
+                return
+
+            self.data["topic"]["name"] = name
+            self.data["topic"]["description"] = description
+            self.unsaved_changes = True
+            self.update_topic_info()
+            self.update_window_title()
+            dialog.destroy()
+
+        ttk.Button(dialog, text="Сохранить", command=save_topic).pack(pady=10)
+
+    def validate_topic(self):
+        """Валидация темы"""
+        if CONFIG_AVAILABLE:
+            try:
+                valid, error = validate_topic_data(self.data["topic"])
+                if valid:
+                    messagebox.showinfo("Валидация", "Тема прошла проверку")
+                else:
+                    messagebox.showerror("Валидация", f"Ошибка: {error}")
+            except:
+                self._basic_topic_validation()
+        else:
+            self._basic_topic_validation()
+
+    def _basic_topic_validation(self):
+        """Базовая валидация темы"""
+        if not self.data["topic"].get("name", "").strip():
+            messagebox.showerror("Валидация", "Название темы не может быть пустым")
+        else:
+            messagebox.showinfo("Валидация", "Тема прошла базовую проверку")
+
+    def add_question(self):
+        """Добавление нового вопроса"""
+        new_question = {
+            "id": len(self.data["questions"]) + 1,
+            "text": "Новый вопрос",
+            "options": ["Вариант 1", "Вариант 2"],
+            "correct_answer": [0],
+            "question_type": "single",
+            "difficulty": 1,
+            "explanation": "",
+            "media_url": ""
+        }
+
+        self.data["questions"].append(new_question)
+        self.update_questions_list()
+        self.update_stats()
+        self.unsaved_changes = True
+        self.update_window_title()
+
+    def delete_question(self):
+        """Удаление текущего вопроса"""
+        if self.current_question_index >= 0 and self.current_question_index < len(self.data["questions"]):
+            result = messagebox.askyesno("Подтверждение", "Удалить выбранный вопрос?")
+            if result:
+                del self.data["questions"][self.current_question_index]
+                self.current_question_index = -1
+                self.update_questions_list()
+                self.update_stats()
+                self.unsaved_changes = True
+                self.update_window_title()
+
+    def on_question_select(self, event):
+        """Обработчик выбора вопроса в списке"""
+        selection = self.questions_list.selection()
+        if selection:
+            # Получаем индекс выбранного элемента
+            item_id = selection[0]
+            self.current_question_index = int(item_id)
+
+            # Загружаем вопрос для редактирования
+            if 0 <= self.current_question_index < len(self.data["questions"]):
+                self.load_question(self.data["questions"][self.current_question_index])
+
+    def load_question(self, question):
+        """Загрузка вопроса в форму редактирования"""
+        # Очищаем форму
+        self.question_text.delete(1.0, tk.END)
+        self.question_explanation.delete(1.0, tk.END)
+
+        # Заполняем данные
+        self.question_text.insert(1.0, question.get("text", ""))
+        self.question_type.set(question.get("question_type", "single"))
+        self.question_difficulty.set(question.get("difficulty", 1))
+        self.question_explanation.insert(1.0, question.get("explanation", ""))
+
+        # Загружаем варианты ответов
+        self.load_options(question.get("options", []))
+
+        # Загружаем правильные ответы
+        self.load_correct_answers(question.get("correct_answer", []))
+
+        # Загружаем изображение
+        self.load_image(question.get("media_url", ""))
+
+    def load_options(self, options):
+        """Загрузка вариантов ответов"""
+        # Очищаем текущие варианты
+        for widget in self.options_frame.winfo_children():
+            widget.destroy()
+
+        self.options_list = []
+
+        # Создаем поля для каждого варианта
+        for i, option in enumerate(options):
+            self.add_option_field(option)
+
+    def add_option_field(self, text=""):
+        """Добавление поля для варианта ответа"""
+        option_frame = ttk.Frame(self.options_frame)
+        option_frame.pack(fill=tk.X, padx=5, pady=2)
+
+        entry = ttk.Entry(option_frame)
+        entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        entry.insert(0, text)
+        entry.bind('<KeyRelease>', self.on_text_change)
+
+        delete_btn = ttk.Button(option_frame, text="✕", width=3,
+                                command=lambda: self.delete_option_field(option_frame))
+        delete_btn.pack(side=tk.RIGHT, padx=2)
+
+        self.options_list.append({"frame": option_frame, "entry": entry})
+
+    def delete_option_field(self, frame):
+        """Удаление поля варианта ответа"""
+        # Находим и удаляем из списка
+        self.options_list = [opt for opt in self.options_list if opt["frame"] != frame]
+        frame.destroy()
+        self.on_text_change()
+
+    def load_correct_answers(self, correct_answers):
+        """Загрузка правильных ответов"""
+        # Очищаем текущие ответы
+        for widget in self.answers_frame.winfo_children():
+            widget.destroy()
+
+        # Создаем элементы управления в зависимости от типа вопроса
+        question_type = self.question_type.get()
+
+        if question_type == "single":
+            self.create_single_answer_controls(correct_answers)
+        elif question_type == "multiple":
+            self.create_multiple_answer_controls(correct_answers)
+        elif question_type == "sequence":
+            self.create_sequence_answer_controls(correct_answers)
+
+    def create_single_answer_controls(self, correct_answers):
+        """Создание элементов для одиночного выбора"""
+        ttk.Label(self.answers_frame, text="Правильный ответ:").pack(anchor=tk.W)
+
+        self.correct_answer_var = tk.IntVar()
+        if correct_answers and len(correct_answers) > 0:
+            self.correct_answer_var.set(correct_answers[0])
+
+        self.update_answer_options()
+
+    def create_multiple_answer_controls(self, correct_answers):
+        """Создание элементов для множественного выбора"""
+        ttk.Label(self.answers_frame, text="Правильные ответы:").pack(anchor=tk.W)
+
+        self.correct_answers_vars = []
+        self.update_answer_options()
+
+    def create_sequence_answer_controls(self, correct_answers):
+        """Создание элементов для последовательности"""
+        ttk.Label(self.answers_frame, text="Правильная последовательность:").pack(anchor=tk.W)
+
+        # Здесь будет реализация для последовательности
+        # Пока создаем простое текстовое поле
+        self.sequence_entry = ttk.Entry(self.answers_frame, width=50)
+        self.sequence_entry.pack(padx=5, pady=2)
+        if correct_answers:
+            self.sequence_entry.insert(0, ",".join(map(str, correct_answers)))
+
+    def update_answer_options(self):
+        """Обновление вариантов ответов"""
+        # Эта функция будет вызываться при изменении списка опций
+        pass
+
+    def load_image(self, media_url):
+        """Загрузка изображения"""
+        self.image_path = media_url
+        if media_url and os.path.exists(media_url):
+            try:
+                # Показываем превью изображения
+                img = Image.open(media_url)
+                img.thumbnail((200, 150))
+                photo = ImageTk.PhotoImage(img)
+                self.media_preview.config(image=photo, text="")
+                self.media_preview.image = photo
+            except Exception as e:
+                self.media_preview.config(image="", text=f"Ошибка загрузки: {str(e)}")
+        else:
+            self.media_preview.config(image="", text="Нет изображения")
+
+    def get_options(self):
+        """Получение списка вариантов ответов"""
+        return [opt["entry"].get() for opt in self.options_list if opt["entry"].get().strip()]
+
+    def get_correct_answers(self):
+        """Получение правильных ответов"""
+        question_type = self.question_type.get()
+
+        if question_type == "single":
+            return [self.correct_answer_var.get()] if hasattr(self, 'correct_answer_var') else [0]
+        elif question_type == "multiple":
+            return [i for i, var in enumerate(self.correct_answers_vars) if var.get()] if hasattr(self,
+                                                                                                  'correct_answers_vars') else []
+        elif question_type == "sequence":
+            if hasattr(self, 'sequence_entry'):
+                try:
+                    return [int(x.strip()) for x in self.sequence_entry.get().split(",")]
+                except:
+                    return []
+            return []
+
+        return []
+
+    def on_question_type_change(self, event=None):
+        """Обработчик изменения типа вопроса"""
+        self.load_correct_answers([])
+        self.on_text_change()
+
+    def add_option(self):
+        """Добавление нового варианта ответа"""
+        self.add_option_field()
+        self.on_text_change()
+
+    def delete_option(self):
+        """Удаление выбранного варианта ответа"""
+        if self.options_list:
+            self.delete_option_field(self.options_list[-1]["frame"])
+
+    def select_image(self):
+        """Выбор изображения"""
+        file_path = filedialog.askopenfilename(
+            filetypes=[
+                ("Image files", "*.png *.jpg *.jpeg *.gif *.bmp"),
+                ("All files", "*.*")
+            ]
+        )
+
+        if file_path:
+            self.load_image(file_path)
+            self.on_text_change()
+
+    def remove_image(self):
+        """Удаление изображения"""
+        self.image_path = None
+        self.media_preview.config(image="", text="Нет изображения")
+        self.on_text_change()
+
+    def save_question_changes(self):
+        """Сохранение изменений в текущем вопросе"""
+        if self.current_question_index >= 0:
+            question_data = self.get_current_question_data()
+            self.data["questions"][self.current_question_index] = question_data
+            self.update_questions_list()
+            self.update_stats()
+            self.unsaved_changes = True
+            self.update_window_title()
+            messagebox.showinfo("Сохранение", "Изменения в вопросе сохранены")
+
+    def undo_action(self):
+        """Отмена действия"""
+        messagebox.showinfo("Информация", "Функция отмены будет реализована в следующей версии")
+
+    def redo_action(self):
+        """Повтор действия"""
+        messagebox.showinfo("Информация", "Функция повтора будет реализована в следующей версии")
+
 
     def bind_shortcuts(self):
         """Привязка горячих клавиш"""
@@ -1015,9 +1389,8 @@ if __name__ == "__main__":
         try:
             # Улучшенное отображение на Windows
             import ctypes
-
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
-        except:
+        except Exception:
             pass
 
     root = tk.Tk()
@@ -1026,17 +1399,15 @@ if __name__ == "__main__":
     try:
         root.tk.call("source", "azure.tcl")
         root.tk.call("set_theme", "light")
-    except:
+    except Exception:
         pass  # Если тема недоступна, используем стандартную
 
-    app = EnhancedQuizEditorApp(root)
-
-    # Добавляем методы, если их нет
-    if not hasattr(app, 'create_menu'):
-        app.create_menu = create_menu.__get__(app, EnhancedQuizEditorApp)
-        app.bind_shortcuts = bind_shortcuts.__get__(app, EnhancedQuizEditorApp)
-        app.show_about = show_about.__get__(app, EnhancedQuizEditorApp)
-        app.show_shortcuts = show_shortcuts.__get__(app, EnhancedQuizEditorApp)
-        app.create_menu()
+    try:
+        app = EnhancedQuizEditorApp(root)
+        root.mainloop()
+    except Exception as e:
+        import traceback
+        messagebox.showerror("Критическая ошибка",
+                           f"Не удалось запустить приложение:\n{str(e)}\n\n{traceback.format_exc()}")
 
     root.mainloop()
