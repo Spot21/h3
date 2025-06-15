@@ -12,7 +12,6 @@ from pathlib import Path
 import sys
 import platform
 
-
 # Добавляем путь к проекту для импорта модулей
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -28,6 +27,37 @@ except ImportError:
     DB_ENGINE = "sqlite:///data/history_bot.db"
     CONFIG_AVAILABLE = False
     print("⚠️ Конфигурация проекта недоступна, используются значения по умолчанию")
+
+
+class PlaceholderEntry(ttk.Entry):
+    """Кастомный Entry с поддержкой placeholder текста"""
+
+    def __init__(self, master, placeholder="", *args, **kwargs):
+        super().__init__(master, *args, **kwargs)
+
+        self.placeholder = placeholder
+        self.placeholder_color = 'grey'
+        self.default_fg_color = self['foreground']
+
+        self.bind("<FocusIn>", self._clear_placeholder)
+        self.bind("<FocusOut>", self._add_placeholder)
+
+        self._add_placeholder()
+
+    def _clear_placeholder(self, event=None):
+        if self.get() == self.placeholder:
+            self.delete(0, tk.END)
+            self['foreground'] = self.default_fg_color
+
+    def _add_placeholder(self, event=None):
+        if not self.get():
+            self.insert(0, self.placeholder)
+            self['foreground'] = self.placeholder_color
+
+    def get_real_value(self):
+        """Получить реальное значение без placeholder"""
+        value = self.get()
+        return "" if value == self.placeholder else value
 
 
 class EnhancedQuizEditorApp:
@@ -501,7 +531,6 @@ class EnhancedQuizEditorApp:
         """Повтор действия"""
         messagebox.showinfo("Информация", "Функция повтора будет реализована в следующей версии")
 
-
     def bind_shortcuts(self):
         """Привязка горячих клавиш"""
         self.root.bind('<Control-n>', lambda e: self.new_file())
@@ -636,7 +665,9 @@ class EnhancedQuizEditorApp:
 
         self.search_var = tk.StringVar()
         self.search_var.trace('w', self.on_search_change)
-        search_entry = ttk.Entry(search_frame, textvariable=self.search_var, placeholder_text="Поиск вопросов...")
+
+        # ИСПРАВЛЕНО: Используем кастомный PlaceholderEntry вместо ttk.Entry с placeholder_text
+        search_entry = PlaceholderEntry(search_frame, placeholder="Поиск вопросов...", textvariable=self.search_var)
         search_entry.pack(fill=tk.X, padx=5, pady=2)
 
         filter_frame = ttk.Frame(search_frame)
@@ -1307,8 +1338,12 @@ class EnhancedQuizEditorApp:
         for item in self.questions_list.get_children():
             self.questions_list.delete(item)
 
-        # Получаем параметры фильтрации
+        # Получаем параметры фильтрации (используем get_real_value для PlaceholderEntry)
         search_text = self.search_var.get().lower()
+        # Если у нас есть placeholder текст, игнорируем его
+        if hasattr(self, 'search_entry') and hasattr(self.search_entry, 'get_real_value'):
+            search_text = self.search_entry.get_real_value().lower()
+
         difficulty_filter = self.difficulty_filter.get()
         type_filter = self.type_filter.get()
 
@@ -1379,9 +1414,6 @@ class EnhancedQuizEditorApp:
                                  "images") if self.current_file_path else MEDIA_DIR
         os.makedirs(media_dir, exist_ok=True)
 
-    # Остальные методы остаются такими же, как в оригинале, но с добавленными вызовами
-    # self.unsaved_changes = True и self.update_window_title() где необходимо
-
 
 if __name__ == "__main__":
     # Настройка для Windows
@@ -1389,6 +1421,7 @@ if __name__ == "__main__":
         try:
             # Улучшенное отображение на Windows
             import ctypes
+
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except Exception:
             pass
@@ -1407,7 +1440,6 @@ if __name__ == "__main__":
         root.mainloop()
     except Exception as e:
         import traceback
-        messagebox.showerror("Критическая ошибка",
-                           f"Не удалось запустить приложение:\n{str(e)}\n\n{traceback.format_exc()}")
 
-    root.mainloop()
+        messagebox.showerror("Критическая ошибка",
+                             f"Не удалось запустить приложение:\n{str(e)}\n\n{traceback.format_exc()}")
