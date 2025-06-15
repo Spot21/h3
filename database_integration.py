@@ -39,24 +39,38 @@ def setup_project_paths():
 # Инициализируем пути
 PROJECT_ROOT = setup_project_paths()
 
+# Улучшенная обработка импортов
 try:
     from database.db_manager import get_session, check_connection
     from database.models import Topic, Question
-    from config import DB_ENGINE, MEDIA_DIR, DATA_DIR
-    from utils.validators import validate_question_data, validate_topic_data, validate_json_structure
-
     DB_AVAILABLE = True
     logger = logging.getLogger(__name__)
     logger.info(f"Database modules imported successfully. Project root: {PROJECT_ROOT}")
-
 except ImportError as e:
-    print(f"⚠️ Модули базы данных недоступны: {e}")
-    print(f"Проект корневая директория: {PROJECT_ROOT}")
-    print("Убедитесь, что все зависимости установлены:")
-    print("pip install sqlalchemy psycopg2-binary python-dotenv pillow")
-
     DB_AVAILABLE = False
     logger = logging.getLogger(__name__)
+    logger.warning(f"Database modules unavailable: {e}")
+
+try:
+    from config import DB_ENGINE, MEDIA_DIR, DATA_DIR
+    CONFIG_AVAILABLE = True
+except ImportError as e:
+    CONFIG_AVAILABLE = False
+    # Fallback значения
+    DATA_DIR = str(PROJECT_ROOT / "data")
+    MEDIA_DIR = str(PROJECT_ROOT / "data" / "media")
+    DB_ENGINE = f"sqlite:///{PROJECT_ROOT}/data/history_bot.db"
+    logger.warning(f"Config not available, using fallback values: {e}")
+
+try:
+    from utils.validators import validate_question_data, validate_topic_data, validate_json_structure
+    VALIDATORS_AVAILABLE = True
+except ImportError as e:
+    VALIDATORS_AVAILABLE = False
+    logger.warning(f"Validators not available: {e}")
+
+# Обновляем доступность функций
+DB_AVAILABLE = DB_AVAILABLE and CONFIG_AVAILABLE
 
 
 class DatabaseIntegration:
@@ -469,7 +483,7 @@ class DatabaseIntegration:
 
     def validate_json_for_import(self, json_data: Dict[str, Any]) -> Tuple[bool, List[str]]:
         """Валидация JSON данных перед импортом"""
-        if not DB_AVAILABLE:
+        if not DB_AVAILABLE or not VALIDATORS_AVAILABLE:
             # Базовая валидация без внешних модулей
             return self._basic_validation(json_data)
 
